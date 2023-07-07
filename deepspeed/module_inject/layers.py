@@ -52,15 +52,11 @@ class LmHeadLinearLayer(nn.Module):
         if self.bias is not None:
             output += self.bias
         if self.mp_group is not None:
-            gather_list = [
-                torch.zeros(output.shape, dtype=output.dtype, device=get_accelerator().current_device_name())
-                for _ in range(dist.get_world_size())
-            ]
-            dist.all_gather(gather_list, output, group=self.mp_group)
-            # tensor_out = torch.zeros(dist.get_world_size(), output.shape, dtype=output.dtype, device=get_accelerator().current_device_name())
-            # dist.all_gather_into_tensor(tensor_out, output)
-        output = torch.cat((gather_list[0], gather_list[1]), -1)
-        return output
+            tensor_out = torch.empty((output.shape[0], output.shape[1], output.shape[2] * dist.get_world_size()),
+                                     dtype=output.dtype,
+                                     device=get_accelerator().current_device_name())
+            dist.all_gather_into_tensor(tensor_out, output)
+        return tensor_out
 
 
 class LinearLayer(nn.Module):
