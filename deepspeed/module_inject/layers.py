@@ -29,6 +29,40 @@ class LinearAllreduce(nn.Module):
         return output
 
 
+class LmHeadLinearLayer(nn.Module):
+
+    def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None, mp_group=None):
+        super(LmHeadLinearLayer, self).__init__()
+        if weight is not None:
+            self.weight = weight
+            self.bias = bias
+            self.mp_group = mp_group
+        else:
+            self.weight = Parameter(
+                torch.empty(weight_shape, dtype=dtype, device=get_accelerator().current_device_name()))
+
+            self.bias = Parameter(
+                torch.empty(weight_shape[0],
+                            dtype=dtype,
+                            device=get_accelerator().current_device_name())) \
+                if bias is not None else None
+
+    def forward(self, input):
+        output = torch.matmul(input, self.weight.transpose(-1, -2))
+        if self.bias is not None:
+            output += self.bias
+        if self.mp_group is not None:
+            gather_list = [
+                torch.zeros(output.shape, dtype=output.dtype, device=get_accelerator().current_device_name())
+                for _ in range(dist.get_world_size())
+            ]
+            dist.all_gather(gather_list, output, group=self.mp_group)
+            # tensor_out = torch.zeros(dist.get_world_size(), output.shape, dtype=output.dtype, device=get_accelerator().current_device_name())
+            # dist.all_gather_into_tensor(tensor_out, output)
+        output = torch.cat((gather_list[0], gather_list[1]), -1)
+        return output
+
+
 class LinearLayer(nn.Module):
 
     def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None):
