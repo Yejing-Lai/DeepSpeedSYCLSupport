@@ -168,6 +168,26 @@ void all_reduce(torch::Tensor& data, py::object op, py::object group, bool async
                  .wait());
 }
 
+void all_gather(torch::Tensor& data,
+                std::vector<torch::Tensor>& vec_data_out,
+                py::object group,
+                bool async_op)
+{
+    std::vector<size_t> recvCounts(vec_data_out.size(), data.numel());
+    std::vector<void*> recvBufs;
+    std::transform(vec_data_out.begin(),
+                   vec_data_out.end(),
+                   std::back_inserter(recvBufs),
+                   [](const at::Tensor& t) { return t.data_ptr(); });
+    CCLCHECK(ccl::allgatherv(data.data_ptr(),
+                             (size_t)data.numel(),
+                             recvBufs,
+                             recvCounts,
+                             get_ccl_datatype(data.scalar_type()),
+                             _get_comm_from_group(group))
+                 .wait());
+}
+
 void all_reduce_caching(torch::Tensor& data,
                         py::object op,
                         std::string match_id,
@@ -206,6 +226,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("get_world_size", &get_world_size, "get world size");
     m.def("broadcast", &broadcast, "ccl broadcast");
     m.def("all_reduce", &all_reduce, "ccl all_reduce");
+    m.def("all_gather", &all_gather, "ccl all_gather");
     m.def("all_reduce_caching", &all_reduce_caching, "ccl all_reduce with caching");
     m.def("barrier", &barrier, "barrier");
 }
