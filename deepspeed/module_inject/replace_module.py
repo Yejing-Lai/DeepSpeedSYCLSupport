@@ -19,7 +19,7 @@ from .replace_policy import replace_policies, generic_policies
 from deepspeed import comm as dist
 from torch import nn
 
-from .layers import LinearAllreduce, LinearLayer, LmHeadLinearLayer
+from .layers import LinearAllreduce, LinearLayer, LmHeadLinearLayer, LmHeadLinearAllreduce
 from .load_checkpoint import load_model_with_checkpoint
 import time
 
@@ -387,6 +387,9 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 if child.bias is not None:
                     new_bias.data.copy_(child.bias.data)
                 setattr(child, "replaced", True)
+                if name == "lm_head":
+                    return LmHeadLinearAllreduce(data, dist.get_rank(), dist.get_world_size(), child.bias if child.bias is None else \
+                            torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), mp_group)
                 return LinearAllreduce(data, child.bias if child.bias is None else \
                             torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), mp_group)
             else:
@@ -775,7 +778,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
     if orig_class is not None:
         policy.update({orig_class: (replace_fn, _replace_policy)})
         origin_layer = torch.nn.modules.linear.Linear
-        policy.update({origin_layer: (replace_fn, (''))})
+        policy.update({origin_layer: (replace_fn, ('lm_head'))})
     else:
         for plcy in replace_policies:
             # instantiate a throw-away policy in order to populate the _orig_layer_class
