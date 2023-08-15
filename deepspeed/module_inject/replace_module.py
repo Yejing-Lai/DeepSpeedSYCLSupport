@@ -431,7 +431,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 return
             for param in [
                     "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
-                    "all_head_size", "embed_dim", "hidden_size"
+                    "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads"
             ]:
                 if hasattr(child, param):
                     param_val = getattr(child, param)
@@ -863,8 +863,12 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
         LlamaRMSNorm = None
     load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding, LlamaRMSNorm]
     for name, child in model.named_children():
-        if name == "lm_head" or name =="embed_out":
+        if name == "lm_head" or name == "embed_out":
+            print("name", name)
+            print("policy", policies)
             if child.__class__ in policies:
+                print("model", model)
+                print(policies[child.__class__][-1])
                 replaced_module = policies[child.__class__][0](model,
                                                                policies[child.__class__][-1],
                                                                layer_id,
