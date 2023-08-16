@@ -539,6 +539,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                                              orig_class=orig_layer_impl,
                                              replace_fn=replace_fn,
                                              _replace_policy=config.injection_policy_tuple,
+                                             config_dtype=config.dtype,
                                              checkpoint=checkpoint[i])
             pbar.update(1)
             gc.collect()
@@ -754,10 +755,11 @@ def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
     return replace_module(model=model,
                           orig_class=deepspeed.DeepSpeedTransformerLayer,
                           replace_fn=replace_fn,
-                          _replace_policy=None)
+                          _replace_policy=None,
+                          config_dtype=config.dtype)
 
 
-def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=None):
+def replace_module(model, orig_class, replace_fn, _replace_policy, config_dtype=torch.float, checkpoint=None):
     """ Scan the model for instances of ``orig_clas:`` to replace using ``replace_fn``.
     Arguments:
         model (torch.nn.Module): the model to augment
@@ -799,7 +801,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
     if sd is not None:
         if 'lm_head.weight' in sd.keys() and hasattr(replaced_module, 'lm_head'):
             replaced_module.lm_head.weight = torch.nn.parameter.Parameter(
-                data=torch.empty_like(sd['lm_head.weight'].data, device="cpu"),
+                data=torch.empty_like(sd['lm_head.weight'].data, device="cpu", dtype=config_dtype),
                 requires_grad=sd['lm_head.weight'].data.requires_grad)
             replaced_module.lm_head.weight.data.copy_(sd['lm_head.weight'])
 
