@@ -303,6 +303,10 @@ class AutoTP():
                 elif 'self_attention.dense' in layer and 'falcon' in str(
                         type(module)):  # this is a hack to get the right linear layer for this model!
                     gem_list = gem_list + [layer]
+                elif 'self_attention.dense' in layer and 'ChatGLM' in str(model):
+                    gem_list = gem_list + [layer]
+                elif 'dense_4h_to_h' in layer and 'ChatGLM' in str(model):
+                    gem_list = gem_list + [layer]
 
             layer_list = []
             if gem_list != []:
@@ -402,7 +406,8 @@ class AutoTP():
         for param in [
                 "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
                 "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads", "num_kv_heads", "kv_n_heads",
-                "d_model"
+                "d_model", "num_attention_heads_per_partition", "num_multi_query_groups_per_partition",
+                "hidden_size_per_partition"
         ]:
             if hasattr(child, param):
                 param_val = getattr(child, param)
@@ -463,7 +468,9 @@ class AutoTP():
 
     def get_model_num_kv_heads(self, config):
         num_kv_heads = None
-        kv_head_names = ['num_kv_heads', 'num_key_value_heads', 'num_attention_heads', 'n_heads']
+        kv_head_names = [
+            'multi_query_group_num', 'num_kv_heads', 'num_key_value_heads', 'num_attention_heads', 'n_heads'
+        ]
         for name in kv_head_names:
             if hasattr(config, name):
                 num_kv_heads = getattr(config, name)

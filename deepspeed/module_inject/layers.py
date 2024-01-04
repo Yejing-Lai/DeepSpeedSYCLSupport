@@ -160,3 +160,17 @@ class RMSNormalize(nn.Module):
             hidden_states = hidden_states.to(self.weight.dtype)
 
         return hidden_states * self.weight
+
+
+def swiglu(x):
+    if dist.get_world_size() > 1:
+        gather_list = [torch.zeros_like(x) for _ in range(2)]
+        dist.all_gather(gather_list, x)
+        x = torch.cat(gather_list, -1)
+        x = torch.chunk(x, 2, dim=-1)
+        x_half_size = x[0].shape[-1] // 2
+        begin_idx = dist.get_rank() * x_half_size
+        end_idx = dist.get_rank() * x_half_size + x_half_size
+        return torch.nn.functional.silu(x[0][:, :, begin_idx:end_idx]) * x[1][:, :, begin_idx:end_idx]
+    x = torch.chunk(x, 2, dim=-1)
+    return torch.nn.functional.silu(x[0]) * x[1]

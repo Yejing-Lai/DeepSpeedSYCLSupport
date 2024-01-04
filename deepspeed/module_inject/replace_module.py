@@ -14,6 +14,7 @@ from deepspeed.ops.transformer.inference.diffusers_2d_transformer import Diffuse
 from deepspeed.accelerator import get_accelerator
 from .replace_policy import replace_policies, generic_policies
 from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
+from .layers import swiglu
 
 from deepspeed import comm as dist
 from deepspeed.module_inject.tp_shard import set_num_kv_heads, set_n_embd
@@ -280,7 +281,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         # 4.1 Get n_embd
         n_embd = None
-        multi_query_n_embd_names = ['n_embd']
+        multi_query_n_embd_names = ['n_embd', 'hidden_size']
         for name in multi_query_n_embd_names:
             if hasattr(model_config, name):
                 n_embd = getattr(model_config, name)
@@ -626,6 +627,15 @@ def skip_level_0_prefix(model, state_dict):
     return False
 
 
+def check_and_replace_swiglu(module):
+    swiglu_func_name = ['activation_func']
+    if 'mlp' in module.keys():
+        mlp_dict = module['mlp'].__dict__
+        for name in swiglu_func_name:
+            if name in mlp_dict and 'swiglu' in str(mlp_dict[name]):
+                mlp_dict[name] = swiglu
+
+
 def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_dict=None):
     """ Traverse model's children recursively and apply any transformations in ``policies``.
     Arguments:
@@ -636,6 +646,7 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
     """
     for name, child in model.named_children():
         if child.__class__ in policies:
+            check_and_replace_swiglu(child.__dict__['_modules'])
             replaced_module = policies[child.__class__][0](child,
                                                            policies[child.__class__][-1],
                                                            layer_id,
