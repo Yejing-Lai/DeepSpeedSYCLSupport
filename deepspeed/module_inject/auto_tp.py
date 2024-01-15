@@ -11,7 +11,7 @@ from .replace_policy import replace_policies
 from typing import Optional
 import torch
 from deepspeed import comm as dist
-from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce
+from .layers import LinearAllreduce, LinearLayer, LinearLayerAllgather
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
 from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
@@ -319,6 +319,8 @@ class AutoTP():
             return
         weight_shape = child.weight.shape
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
+        if name == "lm_head" or name == "embed_out":
+            self.all_reduce_linears = ()
         if name in self.all_reduce_linears:
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
             # else [weight_shape[0], weight_shape[1] // mp_size]
@@ -332,12 +334,12 @@ class AutoTP():
             del data
 
             setattr(child, "replaced", True)
-            if name == "lm_head" or name == 'embed_out':
-                return LmHeadLinearAllreduce(
-                    torch.nn.parameter.Parameter(data_dc, requires_grad=False), dist.get_rank(), dist.get_world_size(),
-                    child.bias if child.bias is None else torch.nn.parameter.Parameter(
-                        move(child.bias,
-                             get_accelerator().current_device_name())), self.mp_group)
+            # if name == "lm_head" or name == 'embed_out':
+            #     return LmHeadLinearAllreduce(
+            #         torch.nn.parameter.Parameter(data_dc, requires_grad=False), dist.get_rank(), dist.get_world_size(),
+            #         child.bias if child.bias is None else torch.nn.parameter.Parameter(
+            #             move(child.bias,
+            #                  get_accelerator().current_device_name())), self.mp_group)
             return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
                         torch.nn.parameter.Parameter(move(child.bias, get_accelerator().current_device_name())), self.mp_group)
         else:
@@ -375,6 +377,11 @@ class AutoTP():
                     bias_data_dc = None
 
             setattr(child, "replaced", True)
+            if name == "lm_head" or name == 'embed_out':
+                return LinearLayerAllgather(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
+                                            bias=bias_data_dc,
+                                            mp_group=self.mp_group,
+                                            world_size=dist.get_world_size())
             return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False), bias=bias_data_dc)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
