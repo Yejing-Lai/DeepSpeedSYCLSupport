@@ -61,10 +61,18 @@ class LmHeadLinearAllreduce(nn.Module):
 
 class LinearLayerAllgather(nn.Module):
 
-    def __init__(self, weight_shape=None, dtype=torch.half, weight=None, bias=None, mp_group=None, world_size=None):
+    def __init__(self,
+                 weight_shape=None,
+                 dtype=torch.half,
+                 weight=None,
+                 bias=None,
+                 mp_group=None,
+                 world_size=None,
+                 shard_shape_list=None):
         super(LinearLayerAllgather, self).__init__()
         self.mp_group = mp_group
         self.world_size = world_size
+        self.shard_shape_list = shard_shape_list
         if weight is not None:
             self.weight = weight
             self.bias = bias
@@ -83,11 +91,13 @@ class LinearLayerAllgather(nn.Module):
         if self.bias is not None:
             output += self.bias
 
-        res = torch.empty((output.shape[0], output.shape[1], output.shape[2] * 2), dtype=output.dtype)
         if self.mp_group is not None:
-            gather_list = [torch.zeros_like(output) for _ in range(self.world_size)]
+            gather_list = [
+                torch.empty((output.shape[0], output.shape[1], self.shard_shape_list[i]), dtype=output.dtype)
+                for i in range(self.world_size)
+            ]
             dist.all_gather(gather_list, output, self.mp_group)
-            res = torch.cat((gather_list[0], gather_list[1]), -1)
+            res = torch.cat(gather_list, -1)
         return res
 
 

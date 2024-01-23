@@ -381,7 +381,8 @@ class AutoTP():
                 return LinearLayerAllgather(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
                                             bias=bias_data_dc,
                                             mp_group=self.mp_group,
-                                            world_size=dist.get_world_size())
+                                            world_size=dist.get_world_size(),
+                                            shard_shape_list=get_shard_size_list(weight_shape[0], self.mp_size))
             return LinearLayer(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False), bias=bias_data_dc)
 
     def _slice_embedding(self, child, name, conv_linear_layer):
