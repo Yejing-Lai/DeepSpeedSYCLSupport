@@ -4,6 +4,7 @@
 # DeepSpeed Team
 
 from deepspeed import comm as dist
+from deepspeed.accelerator import get_accelerator
 global num_kv_heads
 
 
@@ -43,7 +44,8 @@ def get_shard_size(total_size, mp_size, name=None, rank=None):
         my_slices = (num_kv_heads // mp_size) + (1 if rank < (num_kv_heads % mp_size) else 0)
         return total_size * my_slices // num_kv_heads
     else:
-        if total_size >= 64:
+        # DNN library favors tensor size in granularity of power of 2, we pick 64 as a common granularity size.
+        if total_size >= 64 and get_accelerator().current_device_name() == "cpu":
             grain_size = total_size // 64
             return (grain_size // mp_size + (1 if rank < (grain_size % mp_size) else 0)) * 64
         else:
