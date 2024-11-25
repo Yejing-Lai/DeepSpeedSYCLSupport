@@ -300,6 +300,9 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         set_n_embd(n_embd)
 
         # 4.3 set attention_heads
+        # for maira-2
+        if "Phi3DecoderLayer" in str(module) and hasattr(model_config, "text_config"):
+            set_num_attention_heads(getattr(model_config.text_config, 'num_attention_heads'))
         if hasattr(model_config, 'num_attention_heads'):
             set_num_attention_heads(getattr(model_config, 'num_attention_heads'))
 
