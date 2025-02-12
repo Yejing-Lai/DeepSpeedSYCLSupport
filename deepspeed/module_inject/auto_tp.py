@@ -132,10 +132,26 @@ class Loading():
     def is_load_module(module):
         load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm]
         load_layer_names = [
-            "LPLayerNorm", "SharedEmbedding", "OPTLearnedPositionalEmbedding", "LlamaRMSNorm", "FalconLinear",
-            "MistralRMSNorm", "T5LayerNorm", "MixtralRMSNorm", "Phi3RotaryEmbedding", "Phi3SuScaledRotaryEmbedding",
-            "Phi3RMSNorm", "YuanRMSNorm", "YuanRotaryEmbedding", "Phi3LongRoPEScaledRotaryEmbedding", "Qwen2RMSNorm",
-            "DeepseekV2RMSNorm", "DeepseekV2YarnRotaryEmbedding", "MoEGate"
+            "LPLayerNorm",
+            "SharedEmbedding",
+            "OPTLearnedPositionalEmbedding",
+            "LlamaRMSNorm",
+            "FalconLinear",
+            "MistralRMSNorm",
+            "T5LayerNorm",
+            "MixtralRMSNorm",
+            "Phi3RotaryEmbedding",
+            "Phi3SuScaledRotaryEmbedding",
+            "Phi3RMSNorm",
+            "YuanRMSNorm",
+            "YuanRotaryEmbedding",
+            "Phi3LongRoPEScaledRotaryEmbedding",
+            "Qwen2RMSNorm",
+            "DeepseekV2RMSNorm",
+            "DeepseekV3RMSNorm",
+            "DeepseekV2YarnRotaryEmbedding",
+            "DeepseekV3YarnRotaryEmbedding",
+            "MoEGate",
         ]
         return module.__class__ in load_layers or module._get_name() in load_layer_names
 
@@ -334,7 +350,7 @@ class AutoTP():
         weight_shape = child.weight.shape
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         # For TP layer skip, e.g., MoE gate, deepseek low rank layer skip
-        if "q_a_proj" in name or "kv_a_proj_with_mqa" in name or name == "block_sparse_moe.gate" or (
+        if "q_b_proj" in name or "q_a_proj" in name or "kv_a_proj_with_mqa" in name or name == "block_sparse_moe.gate" or (
             ('mlp.shared_expert_gate' == name or 'mlp.gate' == name) and 'qwen2_moe' in str(type(self.module))):
             return child
         # For Yuan model
@@ -477,6 +493,10 @@ class AutoTP():
             checking_key = self.prefix + '.' + class_name + '.' + name + '.' if class_name != "" else self.prefix + '.' + name + '.'
             if Loading.is_load_module(child) and self.state_dict is not None:
                 if any(checking_key in item for item in self.state_dict):
+                    if "MoEGate" in str(child):
+                        child.e_score_correction_bias = torch.nn.parameter.Parameter(
+                            data=torch.empty_like(child.e_score_correction_bias.data, device="cpu"),
+                            requires_grad=child.e_score_correction_bias.data.requires_grad)
                     Loading.load(child, self.state_dict, checking_key, self.mp_group)
                 else:
                     continue
