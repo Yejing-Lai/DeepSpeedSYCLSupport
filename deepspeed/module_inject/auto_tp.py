@@ -350,7 +350,7 @@ class AutoTP():
         weight_shape = child.weight.shape
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
         # For TP layer skip, e.g., MoE gate, deepseek low rank layer skip
-        if "q_b_proj" in name or "q_a_proj" in name or "kv_a_proj_with_mqa" in name or name == "block_sparse_moe.gate" or (
+        if "q_a_proj" in name or "kv_a_proj_with_mqa" in name or name == "block_sparse_moe.gate" or (
             ('mlp.shared_expert_gate' == name or 'mlp.gate' == name) and 'qwen2_moe' in str(type(self.module))):
             return child
         # For Yuan model
@@ -493,10 +493,6 @@ class AutoTP():
             checking_key = self.prefix + '.' + class_name + '.' + name + '.' if class_name != "" else self.prefix + '.' + name + '.'
             if Loading.is_load_module(child) and self.state_dict is not None:
                 if any(checking_key in item for item in self.state_dict):
-                    if "MoEGate" in str(child):
-                        child.e_score_correction_bias = torch.nn.parameter.Parameter(
-                            data=torch.empty_like(child.e_score_correction_bias.data, device="cpu"),
-                            requires_grad=child.e_score_correction_bias.data.requires_grad)
                     Loading.load(child, self.state_dict, checking_key, self.mp_group)
                 else:
                     continue
